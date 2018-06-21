@@ -141,6 +141,20 @@ class Nodes(object):
         self.getByID(nid).status.update(nval, force=True, silent=True)
         self.parent.log.info('ISY Updated Node: ' + nid)
 
+    def _controlmsg(self, xmldoc):
+        """Passes Control events from an event stream message to nodes, for
+        sending out to subscribers."""
+        try:
+            nid = xmldoc.getElementsByTagName('node')[0].firstChild.toxml()
+            cntrl = xmldoc.getElementsByTagName('control')[0].firstChild.toxml()
+        except IndexError:
+            # If there is no node associated with the control message we ignore it
+            return
+
+        self.getByID(nid).controlEvents.notify(cntrl)
+        self.parent.log.info('ISY Node Control Event: ' + nid + ' ' + cntrl)
+
+
     def parse(self, xml):
         """
         Parses the xml data.
@@ -159,55 +173,69 @@ class Nodes(object):
                 features = xmldoc.getElementsByTagName(ntype)
 
                 for feature in features:
-                    family_tag = feature.getElementsByTagName('family')
-                    if len(family_tag) > 0:
-                        family = family_tag[0].firstChild.toxml()
-                    else:
-                        family = None
-
-                    if family is not '6':  # ignore controller group
-                        nid = feature.getElementsByTagName('address')[0] \
+                    nid = feature.getElementsByTagName('address')[0] \
+                        .firstChild.toxml()
+                    nname = feature.getElementsByTagName('name')[0] \
+                        .firstChild.toxml()
+                    try:
+                        nparent = feature.getElementsByTagName('parent')[0] \
                             .firstChild.toxml()
-                        nname = feature.getElementsByTagName('name')[0] \
+                    except IndexError:
+                        nparent = None
+
+                    try:
+                        parent_nid = feature.getElementsByTagName('pnode')[0] \
                             .firstChild.toxml()
-                        try:
-                            nparent = feature.getElementsByTagName('parent')[0] \
-                                .firstChild.toxml()
-                        except:
-                            nparent = None
+                    except IndexError:
+                        parent_nid = None
 
-                        if ntype == 'folder':
-                            self.insert(nid, nname, nparent, None, ntype)
-                        elif ntype == 'node':
-                            (state_val, state_uom, state_prec,
-                             aux_props) = parse_xml_properties(feature)
+                    try:
+                        type = feature.getElementsByTagName('type')[0] \
+                            .firstChild.toxml()
+                    except IndexError:
+                        type = None
 
-                            dimmable = '%' in state_uom
+                    try:
+                        nodeDefId = feature.attributes['nodeDefId'].value
+                    except KeyError:
+                        nodeDefId = None
 
+                    if ntype == 'folder':
+                        self.insert(nid, nname, nparent, None, ntype)
+                    elif ntype == 'node':
+                        (state_val, state_uom, state_prec,
+                         aux_props) = parse_xml_properties(feature)
+
+                        dimmable = '%' in state_uom
+
+                        self.insert(nid, nname, nparent,
+                                    Node(self, nid, state_val, nname,
+                                         dimmable,
+                                         uom=state_uom, prec=state_prec,
+                                         aux_properties=aux_props,
+                                         node_def_id=nodeDefId,
+                                         parent_nid=parent_nid,
+                                         type=type),
+                                    ntype)
+                    elif ntype == 'group':
+                        flag = feature.attributes['flag'].value
+                        # Ignore groups that contain 0x08 in the flag since that is a ISY scene that
+                        # contains every device/scene so it will contain some scenes we have not
+                        # seen yet so they are not defined and it includes the ISY MAC addrees in
+                        # newer versions of ISY 5.0.6+ ..
+                        if int(flag) & 0x08:
+                            self.parent.log.info('Skipping group flag=' + flag + " " + nid )
+                        else:
+                            mems = feature.getElementsByTagName('link')
+                            # Build list of members
+                            members = [mem.firstChild.nodeValue for mem in mems]
+                            # Build list of controllers
+                            controllers = []
+                            for mem in mems:
+                                if int(mem.attributes['type'].value) == 16:
+                                    controllers.append(mem.firstChild.nodeValue)
                             self.insert(nid, nname, nparent,
-                                        Node(self, nid, state_val, nname,
-                                             dimmable,
-                                             uom=state_uom, prec=state_prec,
-                                             aux_properties=aux_props),
-                                        ntype)
-                        elif ntype == 'group':
-                            flag = feature.attributes['flag'].value
-                            # Ignore group flag=12 since that is a ISY scene that contains every device/scene
-                            # so it will contain some scenes we have not seen yet so they are not defined
-                            # and it includes the ISY MAC addrees in newer versions of ISY 5.0.6+ ..
-                            if int(flag) == 12:
-                                self.parent.log.info('Skipping group flag=' + flag + " " + nid )
-                            else:
-                                mems = feature.getElementsByTagName('link')
-                                # Build list of members
-                                members = [mem.firstChild.nodeValue for mem in mems]
-                                # Build list of controllers
-                                controllers = []
-                                for mem in mems:
-                                    if int(mem.attributes['type'].value) == 16:
-                                        controllers.append(mem.firstChild.nodeValue)
-                                self.insert(nid, nname, nparent,
-                                            Group(self, nid, nname, members, controllers), ntype)
+                                        Group(self, nid, nname, members, controllers), ntype)
 
             self.parent.log.info('ISY Loaded Nodes')
 
