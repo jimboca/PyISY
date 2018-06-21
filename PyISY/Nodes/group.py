@@ -80,9 +80,12 @@ class Group(object):
     def update(self, e=None):
         """ Update the group with values from the controller. """
         for m in self.members:
-            if self.parent[m].status > 0:
-                self.status.update(255, force=True, silent=True)
-                return
+            if m in self.parent:
+                if self.parent[m].status > 0:
+                    self.status.update(255, force=True, silent=True)
+                    return
+            else:
+                self.parent.parent.log.error("Scene '{}' contains '{}' which not not in parent?".format(self._id,m))
         self.status.update(0, force=True, silent=True)
 
     def off(self):
