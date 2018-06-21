@@ -79,13 +79,14 @@ class Group(object):
 
     def update(self, e=None):
         """ Update the group with values from the controller. """
+        self.parent.parent.log.debug("update '{}' '{}'".format(self,self.name))
         for m in self.members:
-            if m in self.parent:
-                if self.parent[m].status > 0:
-                    self.status.update(255, force=True, silent=True)
-                    return
-            else:
-                self.parent.parent.log.error("Scene '{}' contains '{}' which not not in parent?".format(self._id,m))
+            self.parent.parent.log.debug("Check member '{}'".format(m))
+            if self.parent[m].status > 0:
+                self.status.update(255, force=True, silent=True)
+                return
+            #else:
+            #self.parent.parent.log.error("Scene '{}' contains '{}' which not not in parent?".format(self,m))
         self.status.update(0, force=True, silent=True)
 
     def off(self):
