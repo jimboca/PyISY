@@ -81,8 +81,11 @@ class Group(object):
         """ Update the group with values from the controller. """
         self.parent.parent.log.debug("update '{}' '{}'".format(self,self.name))
         for m in self.members:
-            self.parent.parent.log.debug("Check member '{}'".format(m))
-            if self.parent[m].status > 0:
+            self.parent.parent.log.debug("Check member '{}' ''{}' '{}'".format(m,self.parent[m],self.parent[m].status))
+            # Nodeserver nodes won't have a status, since we don't get them..
+            if self.parent[m].status == None:
+                self.parent.parent.log.error("update '{}' '{}' status is None".format(self,self.name))
+            elif self.parent[m].status > 0:
                 self.status.update(255, force=True, silent=True)
                 return
             #else:
